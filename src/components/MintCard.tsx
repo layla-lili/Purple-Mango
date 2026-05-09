@@ -65,6 +65,8 @@ const MintCard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [loadingMsg, setLoadingMsg] = useState("");
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
 
   // Shared timer helper
   const startTimer = (messages: string[]) => {
@@ -87,6 +89,7 @@ const MintCard: React.FC = () => {
     setGenResult(null);
     setUploadResult(null);
     setTxSignature(null);
+    setImageUri(null);
 
     const timer = startTimer(GENERATE_MESSAGES);
     try {
@@ -109,6 +112,7 @@ const MintCard: React.FC = () => {
   const handleUpload = useCallback(async () => {
     if (!genResult) return;
     setStatus("uploading");
+    setIsUploading(true);
     setError(null);
 
     const nftName =
@@ -126,11 +130,13 @@ const MintCard: React.FC = () => {
         publicKey?.toBase58()
       );
       setUploadResult(result);
+      setImageUri(result.metadataUri);
       setStatus("uploaded");
     } catch (err: any) {
       setError(err?.message || "Failed to upload to IPFS. Please try again.");
       setStatus("error");
     } finally {
+      setIsUploading(false);
       clearInterval(timer);
     }
   }, [genResult, prompt, publicKey]);
@@ -390,7 +396,7 @@ const MintCard: React.FC = () => {
                 </button>
                 <button
                   onClick={handleMint}
-                  disabled={!publicKey}
+                  disabled={!publicKey || isUploading || !imageUri}
                   className="flex-1 pm-btn-primary py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
                 >
                   <Send className="w-4 h-4" />
