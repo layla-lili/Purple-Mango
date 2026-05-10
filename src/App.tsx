@@ -8,7 +8,6 @@ import {
 } from "@solana/wallet-adapter-react";
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
 import {
-  PhantomWalletAdapter,
   SolflareWalletAdapter,
   TrustWalletAdapter,
 } from "@solana/wallet-adapter-wallets";
@@ -24,11 +23,7 @@ const App = () => {
   const endpoint = useMemo(() => clusterApiUrl(network), [network]);
 
   const wallets = useMemo(
-    () => [
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter({ network }),
-      new TrustWalletAdapter(),
-    ],
+    () => [new SolflareWalletAdapter({ network }), new TrustWalletAdapter()],
     [network],
   );
 

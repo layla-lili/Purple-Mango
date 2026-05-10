@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
   Wand2,
   Loader2,
@@ -53,8 +54,29 @@ const UPLOAD_MESSAGES = [
   "Confirming CID...",
 ];
 
+const MIN_MINT_SOL = 0.02;
+
+function extractMintErrorMessage(err: any): string {
+  const nestedMsg =
+    err?.cause?.message ||
+    err?.error?.message ||
+    err?.message ||
+    (typeof err === "string" ? err : "");
+  const logs = err?.logs || err?.cause?.logs;
+
+  if (!nestedMsg) {
+    return "Transaction failed. Please try again.";
+  }
+
+  if (Array.isArray(logs) && logs.length > 0) {
+    return `${nestedMsg} | ${logs.slice(-5).join(" | ")}`;
+  }
+
+  return nestedMsg;
+}
+
 const MintCard: React.FC = () => {
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, signTransaction } = useWallet();
   const { connection } = useConnection();
 
   const [prompt, setPrompt] = useState("");
@@ -67,6 +89,41 @@ const MintCard: React.FC = () => {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [walletBalanceSol, setWalletBalanceSol] = useState<number | null>(null);
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadBalance = async () => {
+      if (!publicKey) {
+        setWalletBalanceSol(null);
+        setIsCheckingBalance(false);
+        return;
+      }
+
+      setIsCheckingBalance(true);
+      try {
+        const lamports = await connection.getBalance(publicKey, "confirmed");
+        if (!cancelled) {
+          setWalletBalanceSol(lamports / LAMPORTS_PER_SOL);
+        }
+      } catch {
+        if (!cancelled) {
+          setWalletBalanceSol(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingBalance(false);
+        }
+      }
+    };
+
+    loadBalance();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicKey, connection, status]);
 
   // Shared timer helper
   const startTimer = (messages: string[]) => {
@@ -100,7 +157,7 @@ const MintCard: React.FC = () => {
       setError(
         err?.isRetryable
           ? "Model is warming up. Please try again in a moment."
-          : err?.message || "Failed to generate image. Please try again."
+          : err?.message || "Failed to generate image. Please try again.",
       );
       setStatus("error");
     } finally {
@@ -116,9 +173,7 @@ const MintCard: React.FC = () => {
     setError(null);
 
     const nftName =
-      prompt.length > 28
-        ? `PM: ${prompt.slice(0, 24)}...`
-        : `PM: ${prompt}`;
+      prompt.length > 28 ? `PM: ${prompt.slice(0, 24)}...` : `PM: ${prompt}`;
 
     const timer = startTimer(UPLOAD_MESSAGES);
     try {
@@ -127,7 +182,7 @@ const MintCard: React.FC = () => {
         genResult.contentType,
         prompt,
         nftName,
-        publicKey?.toBase58()
+        publicKey?.toBase58(),
       );
       setUploadResult(result);
       setImageUri(result.metadataUri);
@@ -149,34 +204,66 @@ const MintCard: React.FC = () => {
 
     try {
       const nftName =
-        prompt.length > 28
-          ? `PM: ${prompt.slice(0, 24)}...`
-          : `PM: ${prompt}`;
+        prompt.length > 28 ? `PM: ${prompt.slice(0, 24)}...` : `PM: ${prompt}`;
 
       const { transaction, mintKeypair } = await buildMintNFTTransaction(
         publicKey,
         nftName,
         "PMANGO",
-        uploadResult.metadataUri
+        uploadResult.metadataUri,
       );
 
-      // Pass the mint keypair as a signer so the wallet adapter
-      // can coordinate signing: wallet signs for payer, mintKeypair
-      // signs for the new mint account creation.
-      const sig = await sendTransaction(transaction, connection, {
-        signers: [mintKeypair],
+      const balance = await connection.getBalance(publicKey, "confirmed");
+      const minimumNeeded = MIN_MINT_SOL * LAMPORTS_PER_SOL;
+      if (balance < minimumNeeded) {
+        throw new Error(
+          `Insufficient devnet SOL. Need at least ~${MIN_MINT_SOL.toFixed(2)} SOL to mint (current: ${(balance / LAMPORTS_PER_SOL).toFixed(4)} SOL).`,
+        );
+      }
+
+      if (!signTransaction) {
+        throw new Error(
+          "Connected wallet does not support transaction signing.",
+        );
+      }
+
+      transaction.partialSign(mintKeypair);
+      const signedTx = await signTransaction(transaction);
+
+      const sim = await connection.simulateTransaction(signedTx);
+      if (sim.value.err) {
+        const logs = (sim.value.logs || []).slice(-8).join(" | ");
+        throw new Error(
+          `Simulation failed: ${JSON.stringify(sim.value.err)}${logs ? ` | ${logs}` : ""}`,
+        );
+      }
+
+      const sig = await connection.sendRawTransaction(signedTx.serialize(), {
         skipPreflight: false,
         preflightCommitment: "confirmed",
+        maxRetries: 3,
       });
-      await connection.confirmTransaction(sig, "confirmed");
+
+      if (signedTx.recentBlockhash && transaction.lastValidBlockHeight) {
+        await connection.confirmTransaction(
+          {
+            signature: sig,
+            blockhash: signedTx.recentBlockhash,
+            lastValidBlockHeight: transaction.lastValidBlockHeight,
+          },
+          "confirmed",
+        );
+      } else {
+        await connection.confirmTransaction(sig, "confirmed");
+      }
 
       setTxSignature(sig);
       setStatus("success");
     } catch (err: any) {
-      setError(err?.message || "Transaction failed. Please try again.");
+      setError(extractMintErrorMessage(err));
       setStatus("error");
     }
-  }, [publicKey, uploadResult, prompt, sendTransaction, connection]);
+  }, [publicKey, uploadResult, prompt, signTransaction, connection]);
 
   const handleReset = () => {
     setStatus("idle");
@@ -191,7 +278,9 @@ const MintCard: React.FC = () => {
   const imageUrl = genResult?.imageUrl || null;
   const showPreview =
     imageUrl &&
-    ["generated", "uploading", "uploaded", "minting", "success"].includes(status);
+    ["generated", "uploading", "uploaded", "minting", "success"].includes(
+      status,
+    );
 
   const previewStatus = (() => {
     if (status === "uploading") return "uploading" as const;
@@ -200,6 +289,15 @@ const MintCard: React.FC = () => {
     if (status === "success") return "success" as const;
     return "generated" as const;
   })();
+
+  const hasEnoughBalance =
+    walletBalanceSol !== null && walletBalanceSol >= MIN_MINT_SOL;
+  const isMintDisabled =
+    !publicKey ||
+    isUploading ||
+    !imageUri ||
+    isCheckingBalance ||
+    !hasEnoughBalance;
 
   return (
     <motion.div
@@ -224,7 +322,9 @@ const MintCard: React.FC = () => {
               const isCurrent = stepStatuses[i].includes(status);
               const isPast =
                 i === 0
-                  ? ["uploading", "uploaded", "minting", "success"].includes(status)
+                  ? ["uploading", "uploaded", "minting", "success"].includes(
+                      status,
+                    )
                   : i === 1
                     ? ["minting", "success"].includes(status)
                     : status === "success";
@@ -396,11 +496,17 @@ const MintCard: React.FC = () => {
                 </button>
                 <button
                   onClick={handleMint}
-                  disabled={!publicKey || isUploading || !imageUri}
+                  disabled={isMintDisabled}
                   className="flex-1 pm-btn-primary py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
                 >
                   <Send className="w-4 h-4" />
-                  {publicKey ? "Mint NFT" : "Connect Wallet to Mint"}
+                  {!publicKey
+                    ? "Connect Wallet to Mint"
+                    : isCheckingBalance
+                      ? "Checking Balance..."
+                      : !hasEnoughBalance
+                        ? `Need ${MIN_MINT_SOL.toFixed(2)} SOL`
+                        : "Mint NFT"}
                 </button>
               </>
             )}
@@ -439,41 +545,60 @@ const MintCard: React.FC = () => {
 
           {/* ── IPFS CID badge ───────────────────────────────────── */}
           <AnimatePresence>
-            {uploadResult && ["uploaded", "minting", "success"].includes(status) && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="flex flex-col gap-1.5 p-3 rounded-lg bg-muted/30 border border-border"
-              >
-                <div className="flex items-center gap-1.5 text-[10px] font-mono text-pm-purple-light">
-                  <Link2 className="w-3 h-3" />
-                  Permanently stored on IPFS
-                </div>
-                <div className="flex flex-col sm:flex-row gap-1.5">
-                  <a
-                    href={uploadResult.imageGatewayUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] font-mono text-muted-foreground hover:text-pm-mango transition-colors truncate"
-                  >
-                    Image: {uploadResult.imageCid.slice(0, 16)}...
-                  </a>
-                  <a
-                    href={uploadResult.metadataGatewayUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] font-mono text-muted-foreground hover:text-pm-mango transition-colors truncate"
-                  >
-                    Metadata: {uploadResult.metadataCid.slice(0, 16)}...
-                  </a>
-                </div>
-              </motion.div>
-            )}
+            {uploadResult &&
+              ["uploaded", "minting", "success"].includes(status) && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="flex flex-col gap-1.5 p-3 rounded-lg bg-muted/30 border border-border"
+                >
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-pm-purple-light">
+                    <Link2 className="w-3 h-3" />
+                    Permanently stored on IPFS
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-1.5">
+                    <a
+                      href={uploadResult.imageGatewayUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-mono text-muted-foreground hover:text-pm-mango transition-colors truncate"
+                    >
+                      Image: {uploadResult.imageCid.slice(0, 16)}...
+                    </a>
+                    <a
+                      href={uploadResult.metadataGatewayUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-mono text-muted-foreground hover:text-pm-mango transition-colors truncate"
+                    >
+                      Metadata: {uploadResult.metadataCid.slice(0, 16)}...
+                    </a>
+                  </div>
+                </motion.div>
+              )}
           </AnimatePresence>
 
           {/* ── Status messages ──────────────────────────────────── */}
           <AnimatePresence>
+            {status === "uploaded" &&
+              publicKey &&
+              !isCheckingBalance &&
+              !hasEnoughBalance && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="flex items-center gap-2 text-sm text-destructive"
+                >
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="font-mono text-xs">
+                    Need at least {MIN_MINT_SOL.toFixed(2)} SOL on Devnet to
+                    mint. Current balance: {walletBalanceSol?.toFixed(4)} SOL.
+                  </span>
+                </motion.div>
+              )}
+
             {status === "success" && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}

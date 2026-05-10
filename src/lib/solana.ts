@@ -13,6 +13,7 @@ import {
   Keypair,
   clusterApiUrl,
   TransactionInstruction,
+  SYSVAR_RENT_PUBKEY,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -24,6 +25,10 @@ import {
   getMinimumBalanceForRentExemptMint,
   MINT_SIZE,
 } from "@solana/spl-token";
+import {
+  callGenerateImage,
+  uploadToIPFS as uploadIpfsRequest,
+} from "@/lib/api";
 
 // ──────────────────────────────────────────────
 // Constants
@@ -125,7 +130,6 @@ export interface GenerateResult {
 
 export async function generateAIImage(prompt: string): Promise<GenerateResult> {
   try {
-    const { callGenerateImage } = await import("@/lib/api");
     const result = await callGenerateImage(prompt);
     return {
       imageUrl: result.imageUrl,
@@ -138,13 +142,32 @@ export async function generateAIImage(prompt: string): Promise<GenerateResult> {
       edgeFnError?.message || edgeFnError,
     );
     await new Promise((r) => setTimeout(r, 1200));
-    const seed = Math.abs(
-      prompt.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 10000,
-    );
+    const safePrompt = prompt
+      .trim()
+      .slice(0, 72)
+      .replace(/[<>&"]/g, "");
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+        <defs>
+          <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#1b1026" />
+            <stop offset="50%" stop-color="#5c2d91" />
+            <stop offset="100%" stop-color="#f59e0b" />
+          </linearGradient>
+        </defs>
+        <rect width="512" height="512" rx="36" fill="url(#bg)" />
+        <circle cx="388" cy="128" r="86" fill="rgba(255,255,255,0.08)" />
+        <circle cx="132" cy="364" r="110" fill="rgba(255,255,255,0.06)" />
+        <text x="50%" y="45%" text-anchor="middle" fill="#fff7ed" font-family="Arial, sans-serif" font-size="36" font-weight="700">Purple Mango</text>
+        <text x="50%" y="56%" text-anchor="middle" fill="#fef3c7" font-family="Arial, sans-serif" font-size="22">${safePrompt || "AI NFT"}</text>
+        <text x="50%" y="70%" text-anchor="middle" fill="#f3e8ff" font-family="Arial, sans-serif" font-size="16">Fallback artwork</text>
+      </svg>
+    `.trim();
+    const imageBase64 = btoa(svg);
     return {
-      imageUrl: `https://picsum.photos/seed/${seed}/512/512`,
-      imageBase64: "",
-      contentType: "image/png",
+      imageUrl: `data:image/svg+xml;base64,${imageBase64}`,
+      imageBase64,
+      contentType: "image/svg+xml",
     };
   }
 }
@@ -170,8 +193,7 @@ export async function uploadToIPFS(
   creatorAddress?: string,
 ): Promise<UploadResult> {
   try {
-    const { uploadToIPFS: upload } = await import("@/lib/api");
-    const result = await upload({
+    const result = await uploadIpfsRequest({
       imageBase64,
       contentType,
       name: nftName,
@@ -319,8 +341,9 @@ export function createCreateMetadataAccountV3Instruction(
     { pubkey: mint, isSigner: false, isWritable: false },
     { pubkey: mintAuthority, isSigner: true, isWritable: false },
     { pubkey: payer, isSigner: true, isWritable: true },
-    { pubkey: updateAuthority, isSigner: false, isWritable: false },
+    { pubkey: updateAuthority, isSigner: true, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
   ];
 
   return new TransactionInstruction({
@@ -363,6 +386,7 @@ export function createCreateMasterEditionV3Instruction(
     { pubkey: metadata, isSigner: false, isWritable: true },
     { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
   ];
 
   return new TransactionInstruction({
