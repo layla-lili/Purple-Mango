@@ -12,7 +12,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 function requireSupabaseAnonKey() {
   if (!SUPABASE_ANON_KEY) {
     throw new Error(
-      "Missing VITE_SUPABASE_ANON_KEY. Set the anon key in your frontend environment."
+      "Missing VITE_SUPABASE_ANON_KEY. Set the anon key in your frontend environment.",
     );
   }
   return SUPABASE_ANON_KEY;
