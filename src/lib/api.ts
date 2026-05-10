@@ -45,7 +45,7 @@ export async function callGenerateImage(
     }),
   });
 
-  const data = await response.json();
+  const data = await parseResponseJson(response, "generate-image");
 
   if (!response.ok || !data.success) {
     const errMsg = data.error || `Request failed with status ${response.status}`;
@@ -118,7 +118,7 @@ export async function uploadToIPFS(
     }),
   });
 
-  const data = await response.json();
+  const data = await parseResponseJson(response, "upload-metadata");
 
   if (!response.ok || !data.success) {
     const errMsg = data.error || `Upload failed with status ${response.status}`;
@@ -148,4 +148,27 @@ export async function checkEdgeFunctionHealth(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function parseResponseJson(response: Response, endpointName: string) {
+  const contentType = response.headers.get("content-type") || "";
+  const rawText = await response.text();
+
+  if (!rawText) {
+    return {};
+  }
+
+  if (contentType.includes("application/json")) {
+    try {
+      return JSON.parse(rawText);
+    } catch (err) {
+      throw new Error(
+        `${endpointName} returned invalid JSON (${response.status}): ${rawText.slice(0, 200)}`
+      );
+    }
+  }
+
+  throw new Error(
+    `${endpointName} returned ${contentType || "non-JSON response"} (${response.status}): ${rawText.slice(0, 200)}`
+  );
 }

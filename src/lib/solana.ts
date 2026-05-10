@@ -190,21 +190,9 @@ export async function uploadToIPFS(
       metadataGatewayUrl: result.metadataGatewayUrl,
     };
   } catch (err: any) {
-    console.warn(
-      "upload-metadata edge fn unavailable, using stub URI:",
-      err?.message || err
+    throw new Error(
+      err?.message || "Failed to upload image and metadata to IPFS."
     );
-    const seed = Math.abs(
-      prompt.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 10000
-    );
-    return {
-      metadataUri: `https://arweave.net/stub-metadata-${seed}`,
-      metadataIpfsUrl: "",
-      imageCid: "",
-      metadataCid: "",
-      imageGatewayUrl: "",
-      metadataGatewayUrl: "",
-    };
   }
 }
 
@@ -516,8 +504,9 @@ export async function handleActionPost(
 ): Promise<ActionPostResponse> {
   const payer = new PublicKey(account);
 
-  // Generate AI image (stubbed)
-  const { metadataUri } = await generateAIImage(prompt);
+  // Generate AI image and upload it so the on-chain URI points to
+  // permanent metadata instead of a temporary placeholder.
+  const generated = await generateAIImage(prompt);
 
   // Truncate prompt for NFT name
   const nftName =
@@ -525,12 +514,20 @@ export async function handleActionPost(
       ? `PM: ${prompt.slice(0, 24)}...`
       : `PM: ${prompt}`;
 
+  const uploaded = await uploadToIPFS(
+    generated.imageBase64,
+    generated.contentType,
+    prompt,
+    nftName,
+    account
+  );
+
   // Build transaction
   const { transaction, mintKeypair } = await buildMintNFTTransaction(
     payer,
     nftName,
     "PMANGO",
-    metadataUri
+    uploaded.metadataUri
   );
 
   // For the Actions API route, we need to partially sign with the mint

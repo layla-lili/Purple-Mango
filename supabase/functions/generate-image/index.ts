@@ -5,7 +5,12 @@
 // Stores HF_ACCESS_TOKEN securely as a Supabase secret:
 //   supabase secrets set HF_ACCESS_TOKEN=hf_your_token_here
 
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+declare const Deno: {
+  env: {
+    get(name: string): string | undefined;
+  };
+  serve(handler: (req: Request) => Response | Promise<Response>): void;
+};
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -56,10 +61,10 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 function buildEnhancedPrompt(raw: string): string {
-  // Append quality boosters so HF models produce better output
+  const prompt = raw.trim().replace(/\s+/g, " ");
   const boosters =
-    "masterpiece, best quality, highly detailed, 4k, sharp focus, vibrant colors, digital art";
-  return `${raw.trim()}, ${boosters}`;
+    "single subject, centered composition, isolated scene, prompt adherence, highly detailed, sharp focus, vibrant colors";
+  return `${prompt}, ${boosters}`;
 }
 
 async function callHuggingFace(
@@ -152,7 +157,7 @@ Deno.serve(async (req: Request) => {
     const prompt = buildEnhancedPrompt(rawPrompt);
     const negativePrompt =
       body.negative_prompt ||
-      "blurry, low quality, distorted, deformed, ugly, bad anatomy, watermark, text";
+      "blurry, low quality, distorted, deformed, ugly, bad anatomy, watermark, text, bride, wedding, buildings, cityscape, extra people, crowd";
     const width = Math.min(body.width || 512, 1024);
     const height = Math.min(body.height || 512, 1024);
 
