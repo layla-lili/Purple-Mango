@@ -4,8 +4,19 @@
  *   - upload-metadata → Pinata IPFS pinning for image + metadata
  */
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL ||
+  "https://fowwtyrbmmddkemfoqlk.supabase.co";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+
+function requireSupabaseAnonKey() {
+  if (!SUPABASE_ANON_KEY) {
+    throw new Error(
+      "Missing VITE_SUPABASE_ANON_KEY. Set the anon key in your frontend environment."
+    );
+  }
+  return SUPABASE_ANON_KEY;
+}
 
 // ── AI Image Generation ────────────────────────────────────────────
 
@@ -34,7 +45,7 @@ export async function callGenerateImage(
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${requireSupabaseAnonKey()}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -104,7 +115,7 @@ export async function uploadToIPFS(
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${requireSupabaseAnonKey()}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -143,7 +154,7 @@ export async function checkEdgeFunctionHealth(): Promise<boolean> {
     const url = `${SUPABASE_URL}/functions/v1/generate-image`;
     const res = await fetch(url, {
       method: "OPTIONS",
-      headers: { Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      headers: { Authorization: `Bearer ${requireSupabaseAnonKey()}` },
     });
     return res.ok || res.status === 200 || res.status === 204;
   } catch {
