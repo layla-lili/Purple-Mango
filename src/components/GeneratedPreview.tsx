@@ -1,7 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
 import {
-  Loader2,
   CheckCircle2,
   Sparkles,
   HardDrive,
@@ -58,7 +57,7 @@ const GeneratedPreview: React.FC<GeneratedPreviewProps> = ({
             )}
             {status === "uploading" && (
               <>
-                <Loader2 className="w-3.5 h-3.5 text-pm-mango animate-spin flex-shrink-0" />
+                <HardDrive className="w-3.5 h-3.5 text-pm-mango flex-shrink-0" />
                 <span className="text-xs font-mono text-pm-mango-light">
                   Pinning to IPFS...
                 </span>
@@ -74,7 +73,7 @@ const GeneratedPreview: React.FC<GeneratedPreviewProps> = ({
             )}
             {status === "minting" && (
               <>
-                <Loader2 className="w-3.5 h-3.5 text-pm-mango animate-spin flex-shrink-0" />
+                <Sparkles className="w-3.5 h-3.5 text-pm-mango flex-shrink-0" />
                 <span className="text-xs font-mono text-pm-mango-light">
                   Minting...
                 </span>
