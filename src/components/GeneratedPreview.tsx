@@ -1,11 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
-import {
-  CheckCircle2,
-  Sparkles,
-  HardDrive,
-  Link2,
-} from "lucide-react";
+import { CheckCircle2, Sparkles, HardDrive, Link2 } from "lucide-react";
 
 interface GeneratedPreviewProps {
   imageUrl: string;
