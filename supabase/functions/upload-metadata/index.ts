@@ -28,23 +28,23 @@ const PINATA_GATEWAY = "https://gateway.pinata.cloud/ipfs";
 // ── Types ──────────────────────────────────────────────────────────
 
 interface UploadRequest {
-  image_base64: string;       // raw base64 (no data: prefix)
-  content_type?: string;      // e.g. "image/png"
-  name: string;               // NFT name
-  symbol?: string;            // NFT symbol
-  description: string;        // NFT description
-  prompt: string;             // original AI prompt
-  creator_address?: string;   // wallet address of minter
+  image_base64: string; // raw base64 (no data: prefix)
+  content_type?: string; // e.g. "image/png"
+  name: string; // NFT name
+  symbol?: string; // NFT symbol
+  description: string; // NFT description
+  prompt: string; // original AI prompt
+  creator_address?: string; // wallet address of minter
   attributes?: Array<{ trait_type: string; value: string }>;
 }
 
 interface UploadResponse {
   success: boolean;
   image_cid?: string;
-  image_ipfs_url?: string;      // ipfs://...
-  image_gateway_url?: string;   // https://gateway.pinata.cloud/ipfs/...
+  image_ipfs_url?: string; // ipfs://...
+  image_gateway_url?: string; // https://gateway.pinata.cloud/ipfs/...
   metadata_cid?: string;
-  metadata_ipfs_url?: string;   // ipfs://... (this is the on-chain URI)
+  metadata_ipfs_url?: string; // ipfs://... (this is the on-chain URI)
   metadata_gateway_url?: string;
   error?: string;
 }
@@ -76,7 +76,7 @@ async function pinFileToPinata(
   fileBytes: Uint8Array,
   fileName: string,
   contentType: string,
-  metadata?: Record<string, string>
+  metadata?: Record<string, string>,
 ): Promise<PinataPinResponse> {
   const formData = new FormData();
 
@@ -90,15 +90,12 @@ async function pinFileToPinata(
       JSON.stringify({
         name: fileName,
         keyvalues: metadata,
-      })
+      }),
     );
   }
 
   // Pin options
-  formData.append(
-    "pinataOptions",
-    JSON.stringify({ cidVersion: 1 })
-  );
+  formData.append("pinataOptions", JSON.stringify({ cidVersion: 1 }));
 
   const res = await fetch(`${PINATA_API_URL}/pinning/pinFileToIPFS`, {
     method: "POST",
@@ -113,7 +110,7 @@ async function pinFileToPinata(
     throw new Error(`Pinata pinFile failed (${res.status}): ${errText}`);
   }
 
-  return await res.json() as PinataPinResponse;
+  return (await res.json()) as PinataPinResponse;
 }
 
 /**
@@ -123,7 +120,7 @@ async function pinJsonToPinata(
   jwt: string,
   jsonData: Record<string, unknown>,
   name: string,
-  metadata?: Record<string, string>
+  metadata?: Record<string, string>,
 ): Promise<PinataPinResponse> {
   const body: Record<string, unknown> = {
     pinataContent: jsonData,
@@ -151,7 +148,7 @@ async function pinJsonToPinata(
     throw new Error(`Pinata pinJSON failed (${res.status}): ${errText}`);
   }
 
-  return await res.json() as PinataPinResponse;
+  return (await res.json()) as PinataPinResponse;
 }
 
 /**
@@ -162,9 +159,10 @@ function buildMetaplexMetadata(
   symbol: string,
   description: string,
   imageIpfsUrl: string,
+  contentType: string,
   prompt: string,
   creatorAddress?: string,
-  extraAttributes?: Array<{ trait_type: string; value: string }>
+  extraAttributes?: Array<{ trait_type: string; value: string }>,
 ): Record<string, unknown> {
   const attributes = [
     { trait_type: "Generator", value: "Purple Mango AI" },
@@ -190,7 +188,7 @@ function buildMetaplexMetadata(
       files: [
         {
           uri: imageIpfsUrl,
-          type: "image/png",
+          type: contentType,
         },
       ],
       category: "image",
@@ -220,7 +218,7 @@ Deno.serve(async (req: Request) => {
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -233,7 +231,7 @@ Deno.serve(async (req: Request) => {
         {
           status: 405,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -249,7 +247,7 @@ Deno.serve(async (req: Request) => {
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -262,17 +260,22 @@ Deno.serve(async (req: Request) => {
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
     const contentType = body.content_type || "image/png";
-    const extension = contentType.split("/")[1] || "png";
+    const extension =
+      contentType === "image/svg+xml"
+        ? "svg"
+        : contentType.split("/")[1] || "png";
     const symbol = body.symbol || "PMANGO";
 
     // ── Step 1: Pin image to IPFS ──────────────────────────────
     const imageBytes = base64ToUint8Array(body.image_base64);
-    const sanitizedName = body.name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+    const sanitizedName = body.name
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .slice(0, 64);
     const imageFileName = `${sanitizedName}.${extension}`;
 
     const imagePinResult = await pinFileToPinata(
@@ -284,7 +287,7 @@ Deno.serve(async (req: Request) => {
         app: "purple-mango-ai",
         type: "nft-image",
         prompt: body.prompt.slice(0, 200),
-      }
+      },
     );
 
     const imageCid = imagePinResult.IpfsHash;
@@ -297,9 +300,10 @@ Deno.serve(async (req: Request) => {
       symbol,
       body.description,
       imageIpfsUrl,
+      contentType,
       body.prompt,
       body.creator_address,
-      body.attributes
+      body.attributes,
     );
 
     const metadataPinResult = await pinJsonToPinata(
@@ -310,7 +314,7 @@ Deno.serve(async (req: Request) => {
         app: "purple-mango-ai",
         type: "nft-metadata",
         image_cid: imageCid,
-      }
+      },
     );
 
     const metadataCid = metadataPinResult.IpfsHash;
@@ -344,7 +348,7 @@ Deno.serve(async (req: Request) => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });

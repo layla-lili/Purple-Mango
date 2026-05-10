@@ -1,9 +1,7 @@
 // supabase/functions/generate-image/index.ts
 // Deploy: supabase functions deploy generate-image --no-verify-jwt
 //
-// Proxies prompt → HuggingFace Stable Diffusion XL → returns base64 image
-// Stores HF_ACCESS_TOKEN securely as a Supabase secret:
-//   supabase secrets set HF_ACCESS_TOKEN=hf_your_token_here
+// Proxies prompt → Pollinations (flux) → returns base64 image.
 
 declare const Deno: {
   env: {
@@ -19,22 +17,15 @@ const corsHeaders: Record<string, string> = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-// ── HuggingFace Configuration ──────────────────────────────────────
+// ── Pollinations Configuration ─────────────────────────────────────
 
-const HF_MODEL = "stabilityai/stable-diffusion-xl-base-1.0";
-const HF_API_URL = `https://api-inference.huggingface.co/models/${HF_MODEL}`;
-
-// Fallback models if primary is loading/unavailable
-const HF_FALLBACK_MODELS = [
-  "runwayml/stable-diffusion-v1-5",
-  "CompVis/stable-diffusion-v1-4",
-];
+const POLLINATIONS_BASE_URL = "https://image.pollinations.ai/prompt";
+const POLLINATIONS_MODEL = "flux";
 
 // ── Types ──────────────────────────────────────────────────────────
 
 interface GenerateRequest {
   prompt: string;
-  negative_prompt?: string;
   width?: number;
   height?: number;
 }
@@ -59,43 +50,56 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-function buildEnhancedPrompt(raw: string): string {
+function buildPurpleMangoPrompt(raw: string): string {
   const prompt = raw.trim().replace(/\s+/g, " ");
-  const boosters =
-    "single subject, centered composition, isolated scene, prompt adherence, highly detailed, sharp focus, vibrant colors";
-  return `${prompt}, ${boosters}`;
+  return `A vibrant, high-quality digital art illustration of ${prompt}, featuring neon purple and bright orange accents, professional lighting.`;
 }
 
-async function callHuggingFace(
-  modelUrl: string,
-  token: string,
+function buildPollinationsUrl(
   prompt: string,
-  negativePrompt: string,
   width: number,
   height: number,
-): Promise<Response> {
-  return await fetch(modelUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      Accept: "image/png",
-    },
-    body: JSON.stringify({
-      inputs: prompt,
-      parameters: {
-        negative_prompt: negativePrompt,
-        width,
-        height,
-        num_inference_steps: 30,
-        guidance_scale: 7.5,
-      },
-      options: {
-        wait_for_model: true,
-        use_cache: false,
-      },
-    }),
-  });
+  seed: number,
+): string {
+  const encodedPrompt = encodeURIComponent(prompt);
+  return `${POLLINATIONS_BASE_URL}/${encodedPrompt}?width=${width}&height=${height}&model=${POLLINATIONS_MODEL}&nologo=true&seed=${seed}`;
+}
+
+async function fetchPollinationsWithRetry(
+  prompt: string,
+  width: number,
+  height: number,
+  maxAttempts: number = 2,
+): Promise<{ response: Response; seed: number }> {
+  let lastError = "Unknown error";
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const seed = Math.floor(Math.random() * 1_000_000_000);
+    const url = buildPollinationsUrl(prompt, width, height, seed);
+
+    try {
+      const imgRes = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "image/*",
+        },
+      });
+
+      if (imgRes.ok) {
+        return { response: imgRes, seed };
+      }
+
+      const errText = await imgRes.text();
+      lastError = `Attempt ${attempt}/${maxAttempts} failed (${imgRes.status}): ${errText.slice(0, 200)}`;
+    } catch (err: unknown) {
+      lastError =
+        err instanceof Error
+          ? `Attempt ${attempt}/${maxAttempts} failed: ${err.message}`
+          : `Attempt ${attempt}/${maxAttempts} failed: ${String(err)}`;
+    }
+  }
+
+  throw new Error(lastError);
 }
 
 // ── Main Handler ───────��───────────────────────────────────────────
@@ -107,22 +111,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // ── Auth check ──────────────────────────────────────────────
-    const HF_ACCESS_TOKEN = Deno.env.get("HF_ACCESS_TOKEN");
-    if (!HF_ACCESS_TOKEN) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error:
-            "HF_ACCESS_TOKEN not configured. Run: supabase secrets set HF_ACCESS_TOKEN=hf_...",
-        } satisfies GenerateResponse),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
-    }
-
     // ── Parse body ──────────────────────────────────────────────
     if (req.method !== "POST") {
       return new Response(
@@ -153,90 +141,32 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const prompt = buildEnhancedPrompt(rawPrompt);
-    const negativePrompt =
-      body.negative_prompt ||
-      "blurry, low quality, distorted, deformed, ugly, bad anatomy, watermark, text, bride, wedding, buildings, cityscape, extra people, crowd";
-    const width = Math.min(body.width || 512, 1024);
-    const height = Math.min(body.height || 512, 1024);
-
-    // ── Call HuggingFace with fallback ──────────────────────────
-    const modelsToTry = [
-      HF_API_URL,
-      ...HF_FALLBACK_MODELS.map(
-        (m) => `https://api-inference.huggingface.co/models/${m}`,
-      ),
-    ];
-
-    let lastError = "";
-    for (const modelUrl of modelsToTry) {
-      try {
-        const hfRes = await callHuggingFace(
-          modelUrl,
-          HF_ACCESS_TOKEN,
-          prompt,
-          negativePrompt,
-          width,
-          height,
-        );
-
-        // If the model returned an image (binary response)
-        const contentType = hfRes.headers.get("content-type") || "";
-
-        if (hfRes.ok && contentType.startsWith("image/")) {
-          const buffer = await hfRes.arrayBuffer();
-          const base64 = arrayBufferToBase64(buffer);
-          const modelName = modelUrl.split("/models/")[1] || "unknown";
-
-          const response: GenerateResponse = {
-            success: true,
-            image_base64: base64,
-            image_url: `data:${contentType};base64,${base64}`,
-            content_type: contentType,
-            model_used: modelName,
-          };
-
-          return new Response(JSON.stringify(response), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-
-        // Model returned JSON error (e.g. loading, rate limited)
-        const errBody = await hfRes.text();
-        let parsed: { error?: string; estimated_time?: number } = {};
-        try {
-          parsed = JSON.parse(errBody);
-        } catch {
-          // not JSON
-        }
-
-        lastError = parsed.error || errBody || `HTTP ${hfRes.status}`;
-        console.log(
-          `Model ${modelUrl} unavailable: ${lastError} — trying next...`,
-        );
-        continue;
-      } catch (fetchErr: unknown) {
-        lastError =
-          fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-        console.log(
-          `Fetch error for ${modelUrl}: ${lastError} — trying next...`,
-        );
-        continue;
-      }
-    }
-
-    // All models failed
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: `All models failed. Last error: ${lastError}`,
-      } satisfies GenerateResponse),
-      {
-        status: 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+    const prompt = buildPurpleMangoPrompt(rawPrompt);
+    const width = Math.min(body.width || 1024, 1024);
+    const height = Math.min(body.height || 1024, 1024);
+    const { response: imgRes, seed } = await fetchPollinationsWithRetry(
+      prompt,
+      width,
+      height,
+      2,
     );
+
+    const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+    const buffer = await imgRes.arrayBuffer();
+    const base64 = arrayBufferToBase64(buffer);
+
+    const response: GenerateResponse = {
+      success: true,
+      image_base64: base64,
+      image_url: `data:${contentType};base64,${base64}`,
+      content_type: contentType,
+      model_used: `pollinations/${POLLINATIONS_MODEL}?seed=${seed}`,
+    };
+
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
