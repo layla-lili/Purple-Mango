@@ -10,9 +10,9 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 // ── AI Image Generation ────────────────────────────────────────────
 
 export interface AIGenerationResult {
-  imageUrl: string;       // data:image/png;base64,...
-  imageBase64: string;    // raw base64 string
-  contentType: string;    // e.g. "image/png"
+  imageUrl: string; // data:image/png;base64,...
+  imageBase64: string; // raw base64 string
+  contentType: string; // e.g. "image/png"
   modelUsed: string;
 }
 
@@ -27,7 +27,7 @@ export async function callGenerateImage(
     negativePrompt?: string;
     width?: number;
     height?: number;
-  }
+  },
 ): Promise<AIGenerationResult> {
   const url = `${SUPABASE_URL}/functions/v1/generate-image`;
 
@@ -48,7 +48,8 @@ export async function callGenerateImage(
   const data = await parseResponseJson(response, "generate-image");
 
   if (!response.ok || !data.success) {
-    const errMsg = data.error || `Request failed with status ${response.status}`;
+    const errMsg =
+      data.error || `Request failed with status ${response.status}`;
     const isRetryable =
       response.status === 502 ||
       response.status === 503 ||
@@ -73,15 +74,15 @@ export async function callGenerateImage(
 
 export interface IPFSUploadResult {
   imageCid: string;
-  imageIpfsUrl: string;        // ipfs://Qm...
-  imageGatewayUrl: string;     // https://gateway.pinata.cloud/ipfs/Qm...
+  imageIpfsUrl: string; // ipfs://Qm...
+  imageGatewayUrl: string; // https://gateway.pinata.cloud/ipfs/Qm...
   metadataCid: string;
-  metadataIpfsUrl: string;     // ipfs://Qm...  ← use this as on-chain URI
+  metadataIpfsUrl: string; // ipfs://Qm...  ← use this as on-chain URI
   metadataGatewayUrl: string;
 }
 
 export interface IPFSUploadRequest {
-  imageBase64: string;       // raw base64 (no data: prefix)
+  imageBase64: string; // raw base64 (no data: prefix)
   contentType?: string;
   name: string;
   symbol?: string;
@@ -96,7 +97,7 @@ export interface IPFSUploadRequest {
  * via the upload-metadata edge function. Returns permanent IPFS CIDs.
  */
 export async function uploadToIPFS(
-  req: IPFSUploadRequest
+  req: IPFSUploadRequest,
 ): Promise<IPFSUploadResult> {
   const url = `${SUPABASE_URL}/functions/v1/upload-metadata`;
 
@@ -163,12 +164,12 @@ async function parseResponseJson(response: Response, endpointName: string) {
       return JSON.parse(rawText);
     } catch (err) {
       throw new Error(
-        `${endpointName} returned invalid JSON (${response.status}): ${rawText.slice(0, 200)}`
+        `${endpointName} returned invalid JSON (${response.status}): ${rawText.slice(0, 200)}`,
       );
     }
   }
 
   throw new Error(
-    `${endpointName} returned ${contentType || "non-JSON response"} (${response.status}): ${rawText.slice(0, 200)}`
+    `${endpointName} returned ${contentType || "non-JSON response"} (${response.status}): ${rawText.slice(0, 200)}`,
   );
 }

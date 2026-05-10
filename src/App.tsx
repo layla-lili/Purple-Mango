@@ -68,7 +68,11 @@ const App = () => {
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={false} onError={handleWalletError}>
+      <WalletProvider
+        wallets={wallets}
+        autoConnect={false}
+        onError={handleWalletError}
+      >
         <WalletModalProvider>
           <Routes>
             <Route path="/" element={<Index />} />

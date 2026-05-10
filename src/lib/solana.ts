@@ -1,6 +1,6 @@
 /**
  * Solana Action helpers for Purple Mango AI Mint
- * 
+ *
  * This module mirrors the Next.js API route structure for Solana Blinks/Actions.
  * In a Next.js deployment, these would live in app/api/actions/mint/route.ts
  */
@@ -34,7 +34,7 @@ export const connection = new Connection(SOLANA_RPC, "confirmed");
 
 /** Metaplex Token Metadata Program */
 export const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
-  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
 );
 
 /** CORS headers required by the Solana Actions spec */
@@ -118,8 +118,8 @@ export function getActionMetadata(baseUrl: string): ActionGetResponse {
 // ──────────────────────────────────────────────
 
 export interface GenerateResult {
-  imageUrl: string;       // display URL (data: or gateway)
-  imageBase64: string;    // raw base64 for IPFS upload
+  imageUrl: string; // display URL (data: or gateway)
+  imageBase64: string; // raw base64 for IPFS upload
   contentType: string;
 }
 
@@ -135,11 +135,11 @@ export async function generateAIImage(prompt: string): Promise<GenerateResult> {
   } catch (edgeFnError: any) {
     console.warn(
       "generate-image edge fn unavailable, falling back to placeholder:",
-      edgeFnError?.message || edgeFnError
+      edgeFnError?.message || edgeFnError,
     );
     await new Promise((r) => setTimeout(r, 1200));
     const seed = Math.abs(
-      prompt.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 10000
+      prompt.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 10000,
     );
     return {
       imageUrl: `https://picsum.photos/seed/${seed}/512/512`,
@@ -154,8 +154,8 @@ export async function generateAIImage(prompt: string): Promise<GenerateResult> {
 // ──────────────────────────────────────────────
 
 export interface UploadResult {
-  metadataUri: string;        // on-chain URI (gateway URL for reliable resolution)
-  metadataIpfsUrl: string;    // ipfs://...
+  metadataUri: string; // on-chain URI (gateway URL for reliable resolution)
+  metadataIpfsUrl: string; // ipfs://...
   imageCid: string;
   metadataCid: string;
   imageGatewayUrl: string;
@@ -167,7 +167,7 @@ export async function uploadToIPFS(
   contentType: string,
   prompt: string,
   nftName: string,
-  creatorAddress?: string
+  creatorAddress?: string,
 ): Promise<UploadResult> {
   try {
     const { uploadToIPFS: upload } = await import("@/lib/api");
@@ -191,7 +191,7 @@ export async function uploadToIPFS(
     };
   } catch (err: any) {
     throw new Error(
-      err?.message || "Failed to upload image and metadata to IPFS."
+      err?.message || "Failed to upload image and metadata to IPFS.",
     );
   }
 }
@@ -203,7 +203,7 @@ export async function uploadToIPFS(
 export function buildMetadataJson(
   name: string,
   description: string,
-  imageUrl: string
+  imageUrl: string,
 ) {
   return {
     name,
@@ -233,7 +233,7 @@ export function deriveMetadataPDA(mint: PublicKey): PublicKey {
       TOKEN_METADATA_PROGRAM_ID.toBuffer(),
       mint.toBuffer(),
     ],
-    TOKEN_METADATA_PROGRAM_ID
+    TOKEN_METADATA_PROGRAM_ID,
   );
   return pda;
 }
@@ -246,7 +246,7 @@ export function deriveMasterEditionPDA(mint: PublicKey): PublicKey {
       mint.toBuffer(),
       Buffer.from("edition"),
     ],
-    TOKEN_METADATA_PROGRAM_ID
+    TOKEN_METADATA_PROGRAM_ID,
   );
   return pda;
 }
@@ -262,10 +262,7 @@ function encodeString(str: string): Buffer {
   return Buffer.concat([len, encoded]);
 }
 
-function encodeOption<T>(
-  value: T | null,
-  encoder: (v: T) => Buffer
-): Buffer {
+function encodeOption<T>(value: T | null, encoder: (v: T) => Buffer): Buffer {
   if (value === null || value === undefined) {
     return Buffer.from([0]);
   }
@@ -282,7 +279,7 @@ export function createCreateMetadataAccountV3Instruction(
   symbol: string,
   uri: string,
   sellerFeeBasisPoints: number = 500,
-  isMutable: boolean = true
+  isMutable: boolean = true,
 ): TransactionInstruction {
   // Instruction discriminator for CreateMetadataAccountV3 = 33
   const discriminator = Buffer.from([33]);
@@ -344,19 +341,16 @@ export function createCreateMasterEditionV3Instruction(
   mintAuthority: PublicKey,
   payer: PublicKey,
   metadata: PublicKey,
-  maxSupply: number | null = 0
+  maxSupply: number | null = 0,
 ): TransactionInstruction {
   // Instruction discriminator for CreateMasterEditionV3 = 17
   const discriminator = Buffer.from([17]);
 
-  const maxSupplyBuf = encodeOption(
-    maxSupply,
-    (v) => {
-      const buf = Buffer.alloc(8);
-      buf.writeBigUInt64LE(BigInt(v));
-      return buf;
-    }
-  );
+  const maxSupplyBuf = encodeOption(maxSupply, (v) => {
+    const buf = Buffer.alloc(8);
+    buf.writeBigUInt64LE(BigInt(v));
+    return buf;
+  });
 
   const data = Buffer.concat([discriminator, maxSupplyBuf]);
 
@@ -386,7 +380,7 @@ export async function buildMintNFTTransaction(
   payer: PublicKey,
   name: string,
   symbol: string,
-  metadataUri: string
+  metadataUri: string,
 ): Promise<{ transaction: Transaction; mintKeypair: Keypair }> {
   const mintKeypair = Keypair.generate();
 
@@ -398,7 +392,7 @@ export async function buildMintNFTTransaction(
     payer,
     false,
     TOKEN_PROGRAM_ID,
-    ASSOCIATED_TOKEN_PROGRAM_ID
+    ASSOCIATED_TOKEN_PROGRAM_ID,
   );
 
   const lamports = await getMinimumBalanceForRentExemptMint(connection);
@@ -413,7 +407,7 @@ export async function buildMintNFTTransaction(
       space: MINT_SIZE,
       lamports,
       programId: TOKEN_PROGRAM_ID,
-    })
+    }),
   );
 
   // 2. Initialize mint (0 decimals for NFT)
@@ -423,8 +417,8 @@ export async function buildMintNFTTransaction(
       0,
       payer,
       payer,
-      TOKEN_PROGRAM_ID
-    )
+      TOKEN_PROGRAM_ID,
+    ),
   );
 
   // 3. Create ATA for payer
@@ -435,8 +429,8 @@ export async function buildMintNFTTransaction(
       payer,
       mintKeypair.publicKey,
       TOKEN_PROGRAM_ID,
-      ASSOCIATED_TOKEN_PROGRAM_ID
-    )
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+    ),
   );
 
   // 4. Mint 1 token
@@ -447,8 +441,8 @@ export async function buildMintNFTTransaction(
       payer,
       1,
       [],
-      TOKEN_PROGRAM_ID
-    )
+      TOKEN_PROGRAM_ID,
+    ),
   );
 
   // 5. Create metadata account
@@ -463,8 +457,8 @@ export async function buildMintNFTTransaction(
       symbol,
       metadataUri,
       500, // 5% royalty
-      true
-    )
+      true,
+    ),
   );
 
   // 6. Create master edition
@@ -476,8 +470,8 @@ export async function buildMintNFTTransaction(
       payer,
       payer,
       metadataPDA,
-      0 // max supply 0 = one-of-one
-    )
+      0, // max supply 0 = one-of-one
+    ),
   );
 
   // Set recent blockhash and fee payer
@@ -500,7 +494,7 @@ export async function buildMintNFTTransaction(
 
 export async function handleActionPost(
   account: string,
-  prompt: string
+  prompt: string,
 ): Promise<ActionPostResponse> {
   const payer = new PublicKey(account);
 
@@ -510,16 +504,14 @@ export async function handleActionPost(
 
   // Truncate prompt for NFT name
   const nftName =
-    prompt.length > 28
-      ? `PM: ${prompt.slice(0, 24)}...`
-      : `PM: ${prompt}`;
+    prompt.length > 28 ? `PM: ${prompt.slice(0, 24)}...` : `PM: ${prompt}`;
 
   const uploaded = await uploadToIPFS(
     generated.imageBase64,
     generated.contentType,
     prompt,
     nftName,
-    account
+    account,
   );
 
   // Build transaction
@@ -527,7 +519,7 @@ export async function handleActionPost(
     payer,
     nftName,
     "PMANGO",
-    uploaded.metadataUri
+    uploaded.metadataUri,
   );
 
   // For the Actions API route, we need to partially sign with the mint

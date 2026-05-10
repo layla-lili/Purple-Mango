@@ -21,8 +21,7 @@ const corsHeaders: Record<string, string> = {
 
 // ── HuggingFace Configuration ──────────────────────────────────────
 
-const HF_MODEL =
-  "stabilityai/stable-diffusion-xl-base-1.0";
+const HF_MODEL = "stabilityai/stable-diffusion-xl-base-1.0";
 const HF_API_URL = `https://api-inference.huggingface.co/models/${HF_MODEL}`;
 
 // Fallback models if primary is loading/unavailable
@@ -73,7 +72,7 @@ async function callHuggingFace(
   prompt: string,
   negativePrompt: string,
   width: number,
-  height: number
+  height: number,
 ): Promise<Response> {
   return await fetch(modelUrl, {
     method: "POST",
@@ -120,7 +119,7 @@ Deno.serve(async (req: Request) => {
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -134,7 +133,7 @@ Deno.serve(async (req: Request) => {
         {
           status: 405,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -150,7 +149,7 @@ Deno.serve(async (req: Request) => {
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -162,9 +161,12 @@ Deno.serve(async (req: Request) => {
     const height = Math.min(body.height || 512, 1024);
 
     // ── Call HuggingFace with fallback ──────────────────────────
-    const modelsToTry = [HF_API_URL, ...HF_FALLBACK_MODELS.map(
-      (m) => `https://api-inference.huggingface.co/models/${m}`
-    )];
+    const modelsToTry = [
+      HF_API_URL,
+      ...HF_FALLBACK_MODELS.map(
+        (m) => `https://api-inference.huggingface.co/models/${m}`,
+      ),
+    ];
 
     let lastError = "";
     for (const modelUrl of modelsToTry) {
@@ -175,7 +177,7 @@ Deno.serve(async (req: Request) => {
           prompt,
           negativePrompt,
           width,
-          height
+          height,
         );
 
         // If the model returned an image (binary response)
@@ -211,13 +213,15 @@ Deno.serve(async (req: Request) => {
 
         lastError = parsed.error || errBody || `HTTP ${hfRes.status}`;
         console.log(
-          `Model ${modelUrl} unavailable: ${lastError} — trying next...`
+          `Model ${modelUrl} unavailable: ${lastError} — trying next...`,
         );
         continue;
       } catch (fetchErr: unknown) {
         lastError =
           fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-        console.log(`Fetch error for ${modelUrl}: ${lastError} — trying next...`);
+        console.log(
+          `Fetch error for ${modelUrl}: ${lastError} — trying next...`,
+        );
         continue;
       }
     }
@@ -231,7 +235,7 @@ Deno.serve(async (req: Request) => {
       {
         status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -243,7 +247,7 @@ Deno.serve(async (req: Request) => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });
