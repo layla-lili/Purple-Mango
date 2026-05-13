@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/actions.json",
+      "destination": "/actions.json"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
