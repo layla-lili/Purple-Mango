@@ -27,6 +27,12 @@ export default async function handler(req: any, res: any) {
       }
     });
   }
+  if (req.method === 'POST') {
+  return res.status(200).json({
+    transaction: "...", // This is where you'd put the base64 transaction from your Supabase logic
+    message: "Minting your Purple Mango..."
+  });
+}
 
   return res.status(405).json({ error: "Method not allowed" });
 }
