@@ -1,0 +1,8 @@
+{
+  "rules": [
+    {
+      "pathPattern": "/**",
+      "apiPath": "https://purple-mango.vercel.app/api/actions/mint"
+    }
+  ]
+}
