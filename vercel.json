@@ -1,18 +1,13 @@
 {
   "version": 2,
+  "functions": {
+    "api/actions/*.ts": {
+      "runtime": "vercel-node@latest"
+    }
+  },
   "rewrites": [
     { "source": "/actions.json", "destination": "/actions.json" },
     { "source": "/api/actions/:path*", "destination": "/api/actions/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/api/actions/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, Content-Encoding, Accept-Encoding" }
-      ]
-    }
   ]
 }
