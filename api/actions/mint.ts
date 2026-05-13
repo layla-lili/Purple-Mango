@@ -1,5 +1,8 @@
-// @ts-ignore
-import { ACTIONS_CORS_HEADERS, ActionGetResponse } from "@solana/actions";
+import { 
+  ACTIONS_CORS_HEADERS, 
+  ActionGetResponse, 
+  LinkedAction 
+} from "@solana/actions";
 
 export default async function handler(req: any, res: any) {
   const baseHref = "https://purple-mango.vercel.app";
